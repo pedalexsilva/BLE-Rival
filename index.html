@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Canyon CF SLX AXS • Dashboard</title>
+<meta name="theme-color" content="#0a0a0a" />
+<style>
+:root{
+  --bg:#0a0a0a; --panel:#141414; --ink:#f5f5f5; --muted:#a3a3a3;
+  --blue:#3b82f6; --green:#22c55e; --amber:#f59e0b; --red:#ef4444;
+  --ring:#1f2937;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; color:var(--ink); background:radial-gradient(1200px 600px at 80% -10%, #101828 0%, transparent 60%), var(--bg);
+  font: 16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial;
+}
+.wrap{max-width:860px;margin:0 auto;padding:14px 14px 80px}
+header{padding:10px 6px 2px}
+h1{margin:.25rem 0 0;font-size:1.65rem;font-weight:800}
+.sub{color:var(--muted);font-size:.92rem;margin:.25rem 0 0.75rem}
+.card{
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:16px; padding:14px; display:flex; align-items:center; gap:14px;
+  box-shadow:0 10px 30px rgba(0,0,0,.25); backdrop-filter: blur(2px);
+}
+.icon{
+  width:48px; height:48px; border-radius:999px; display:grid; place-items:center; background:#0d0d0d;
+}
+.icon svg{width:26px;height:26px;fill:#e5e7eb}
+.row{flex:1;min-width:0}
+.name{font-weight:800;font-size:1.05rem}
+.status{color:var(--muted);font-size:.9rem;margin-top:.2rem}
+.pill{display:inline-block;background:#1f2937;color:#e5e7eb;font-size:.75rem;border-radius:999px;padding:4px 8px;margin-top:6px}
+.right{text-align:right;margin-left:auto}
+.batt{font-size:1.05rem;font-weight:800}
+.batt.ok{color:var(--green)} .batt.mid{color:var(--amber)} .batt.low{color:var(--red)}
+.hrline{margin-top:4px}
+.toolbar{display:flex;gap:10px;margin:12px 2px}
+.btn{
+  border:0;border-radius:12px;padding:12px 14px;font-weight:700;cursor:pointer;
+}
+.btn.primary{background:var(--blue);color:#fff}
+.btn.ghost{background:#1f2937;color:#e5e7eb}
+.grid{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.log{margin-top:12px;background:#0b1020;color:#a7f3d0;padding:10px;border-radius:10px;font-family:ui-monospace,Menlo,monospace;max-height:220px;overflow:auto}
+.sep{height:1px;background:#1f2937;margin:16px 0}
+.small{font-size:.85rem}
+a,button{touch-action:manipulation}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Canyon CF SLX AXS</h1>
+    <div class="sub">Web Bluetooth • Dashboard leve (HTML puro)</div>
+  </header>
+
+  <!-- AMAZFIT -->
+  <div class="card" id="amz-card">
+    <div class="icon" aria-hidden="true">
+      <!-- Heart SVG -->
+      <svg viewBox="0 0 24 24" role="img" aria-label="Heart"><path d="M12 21s-6.716-4.29-9.243-7.243C.822 11.52 1.077 8.33 3.11 6.55a5.5 5.5 0 0 1 7.28.45l.61.63.61-.63a5.5 5.5 0 1 1 7.73 7.82C18.716 16.71 12 21 12 21Z"/></svg>
+    </div>
+    <div class="row">
+      <div class="name">Amazfit Helio Strap</div>
+      <div class="status small" id="amz-status">Pronto.</div>
+      <div class="hrline">❤️ <span id="hr">—</span> bpm &nbsp;|&nbsp; 🔋 <span id="battA">—</span>%</div>
+      <div class="pill" id="amz-tip">Coloca no pulso e ativa medição contínua</div>
+    </div>
+    <div class="right">
+      <div class="batt" id="battATag">—%</div>
+      <div><button id="btnAmazfit" class="btn ghost" style="margin-top:8px">Ler</button></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button id="btnAddSram" class="btn ghost">➕ Adicionar sensor SRAM</button>
+    <button id="btnNotifyTest" class="btn ghost">🔔 Teste Notificação</button>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- LISTA SRAM -->
+  <div class="grid" id="sramList"></div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+/* ======== UI helpers ======== */
+const $ = sel => document.querySelector(sel);
+const logEl = $('#log');
+function log(line){ console.log(line); logEl.textContent += line + "\\n"; logEl.scrollTop = logEl.scrollHeight; }
+const battClass = v => (v==null? '' : (v>=70?'ok':v>=35?'mid':'low'));
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+/* ======== SVG ICONS (atuais) ======== */
+const ICONS = {
+  rd:`<svg viewBox="0 0 24 24"><path d="M3 12h6l3-6h9v2h-8l-3 6H3v-2Zm4 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm10 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/></svg>`,
+  ctrl:`<svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v6l-3 2v8H8v-8L5 11V5a2 2 0 0 1 2-2Z"/></svg>`,
+  fd:`<svg viewBox="0 0 24 24"><path d="M3 13h8l3-3h7v2h-6l-3 3H3v-2Z"/></svg>`,
+  pm:`<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18Zm0 4a5 5 0 1 0 .001 10.001A5 5 0 0 0 12 7Zm0 3a2 2 0 1 1-.001 4.001A2 2 0 0 1 12 10Z"/></svg>`,
+  cloud:`<svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 1 5 5 4 4 0 0 1 4 4 5 5 0 0 1-5 5H7a4 4 0 1 1 0-8c.2-2.8 2.5-5 5-5Z"/></svg>`
+};
+
+/* ======== SRAM custom names (como pediste) ======== */
+const SRAM_PRESETS = [
+  { id:'rd',    name:'RIVAL RD MAX 36T',      hint:'Shake the bike', icon:'rd'   },
+  { id:'ctrlL', name:'RIVAL CONTROLLER (L)',  hint:'Press the lever',icon:'ctrl' },
+  { id:'ctrlR', name:'RIVAL CONTROLLER (R)',  hint:'Press the lever',icon:'ctrl' },
+  { id:'fd',    name:'RIVAL FD',              hint:'Shake the bike', icon:'fd'   },
+  { id:'pm',    name:'QUARQ DUB POWER METER', hint:'Spin the crank', icon:'pm'   },
+];
+
+/* ======== BLE UUIDs ======== */
+const SVC_HR='heart_rate', CH_HR='heart_rate_measurement';
+const SVC_BATT='battery_service', CH_BATT='battery_level';
+const supportsBLE = !!navigator.bluetooth;
+
+/* ======== Notificações ======== */
+async function ensureNotif() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission !== 'denied') {
+    const res = await Notification.requestPermission();
+    return res === 'granted';
+  }
+  return false;
+}
+async function notify(body){
+  try{
+    let reg=null;
+    if ('serviceWorker' in navigator) {
+      try { reg = await navigator.serviceWorker.ready; } catch {}
+    }
+    if (reg && reg.showNotification) { await reg.showNotification(body, { body }); return; }
+    if ('Notification' in window && Notification.permission==='granted') { new Notification(body, { body }); return; }
+    alert(body);
+  }catch(e){ console.warn('notify fail', e); }
+}
+
+/* ======== AMAZFIT (HR + bateria) ======== */
+function parseHR(dv){ const f = dv.getUint8(0); return (f & 1) ? dv.getUint16(1,true) : dv.getUint8(1); }
+
+async function readAmazfit(){
+  const st = $('#amz-status'); const hrEl=$('#hr'); const b1=$('#battA'); const bTag=$('#battATag');
+  if (!supportsBLE) { alert('Este browser não suporta Web Bluetooth.'); return; }
+  await ensureNotif();
+
+  try{
+    st.textContent='A procurar a pulseira...';
+    let device=null;
+    if (navigator.bluetooth.getDevices) {
+      const granted = await navigator.bluetooth.getDevices();
+      device = granted.find(d => (d.name||'').startsWith('Amazfit')) || null;
+    }
+    if (!device) {
+      device = await navigator.bluetooth.requestDevice({ filters:[{ namePrefix:'Amazfit' }], optionalServices:[SVC_HR, SVC_BATT] });
+    }
+    device.addEventListener('gattserverdisconnected', ()=>log('[Amazfit] GATT desligado.'));
+    const server = await device.gatt.connect();
+    st.textContent='Conectado. A ler dados...';
+
+    // HR
+    let hr=null;
+    try {
+      const s = await server.getPrimaryService(SVC_HR);
+      const c = await s.getCharacteristic(CH_HR);
+      try {
+        const v = await c.readValue(); hr = parseHR(v);
+      } catch {
+        // notifica uma vez
+        hr = await new Promise(async (resolve, reject)=>{
+          let to=setTimeout(()=>{ try{c.stopNotifications()}catch{}; reject(new Error('timeout HR')); }, 6000);
+          await c.startNotifications();
+          c.addEventListener('characteristicvaluechanged', ev=>{ clearTimeout(to); try{c.stopNotifications()}catch{}; resolve(parseHR(ev.target.value)); }, { once:true });
+        });
+      }
+    } catch(e) { log('[Amazfit] HR erro: ' + (e.message||e)); }
+    if (hr!=null) hrEl.textContent = hr;
+
+    // Battery (2 tentativas)
+    let batt=null;
+    try{
+      const s = await server.getPrimaryService(SVC_BATT);
+      const c = await s.getCharacteristic(CH_BATT);
+      try { const v = await c.readValue(); batt=v.getUint8(0); }
+      catch { await sleep(900); const v2 = await c.readValue(); batt=v2.getUint8(0); }
+    }catch(e){ log('[Amazfit] Bateria erro: ' + (e.message||e)); }
+    if (batt!=null) { b1.textContent=batt; bTag.textContent=batt+'%'; bTag.className='batt ' + battClass(batt); }
+
+    st.textContent='Leitura concluída.';
+    await notify(`❤️ ${hrEl.textContent} bpm | 🔋 ${b1.textContent}%`);
+    try{ await device.gatt.disconnect(); }catch{}
+
+  }catch(err){
+    st.textContent='Erro: ' + (err.message||err);
+    log('[Amazfit] ' + (err.stack||err));
+  }
+}
+$('#btnAmazfit').addEventListener('click', readAmazfit);
+
+/* ======== SRAM LIST ======== */
+const list = $('#sramList');
+function addRow(preset){
+  const row = document.createElement('div');
+  row.className='card';
+  row.innerHTML = `
+    <div class="icon">${ICONS[preset.icon] || ICONS.cloud}</div>
+    <div class="row">
+      <div class="name">${preset.name}</div>
+      <div class="status small" id="st-${preset.id}">Toque para ler a bateria.</div>
+      <div class="pill">${preset.hint}</div>
+    </div>
+    <div class="right">
+      <div class="batt" id="b-${preset.id}">—%</div>
+      <div style="margin-top:8px"><button class="btn ghost" data-id="${preset.id}">Ler</button></div>
+    </div>`;
+  list.appendChild(row);
+}
+SRAM_PRESETS.forEach(addRow);
+
+async function readSramBattery(id){
+  if (!supportsBLE) { alert('Web Bluetooth não suportado.'); return; }
+  const st = $('#st-'+id); const b = $('#b-'+id);
+  try{
+    st.textContent = 'A procurar sensor...';
+    const dev = await navigator.bluetooth.requestDevice({
+      filters: [
+        { namePrefix:'SRAM' }, { namePrefix:'AXS' }, { namePrefix:'Quarq' }, { namePrefix:'Rival' }, { namePrefix:'RIVAL' }, { namePrefix:'Force' }, { namePrefix:'RED' }
+      ],
+      optionalServices: [SVC_BATT]
+    });
+    const server = await dev.gatt.connect();
+    st.textContent = 'Conectado. A ler bateria...';
+    let batt=null;
+    try{
+      const s = await server.getPrimaryService(SVC_BATT);
+      const c = await s.getCharacteristic(CH_BATT);
+      try { const v = await c.readValue(); batt = v.getUint8(0); }
+      catch { await sleep(1200); const v2 = await c.readValue(); batt = v2.getUint8(0); }
+    }catch(e){ st.textContent='Sem serviço de bateria (0x180F).'; throw e; }
+
+    b.textContent = (batt!=null? batt+'%':'—%');
+    b.className = 'batt '+ battClass(batt);
+    st.textContent = (batt!=null ? 'Bateria lida.' : 'Não foi possível ler.');
+    try{ await dev.gatt.disconnect(); }catch{}
+  }catch(err){
+    st.textContent = 'Seleção cancelada ou erro.';
+    log('[SRAM] ' + (err && (err.stack||err.message) || err));
+  }
+}
+list.addEventListener('click', (ev)=>{
+  const btn = ev.target.closest('button.btn');
+  if (btn && btn.dataset.id) readSramBattery(btn.dataset.id);
+});
+$('#btnAddSram').addEventListener('click', ()=> {
+  // acrescenta uma linha genérica que podes usar para sensores adicionais
+  const id = 'extra_'+Math.random().toString(36).slice(2,8);
+  const preset = { id, name:'SRAM / AXS (extra)', hint:'Ativa o sensor', icon:'cloud' };
+  addRow(preset);
+});
+
+/* ======== Notificação de teste ======== */
+$('#btnNotifyTest').addEventListener('click', async ()=>{
+  await ensureNotif();
+  await notify('❤️ 72 bpm | 🔋 88%');
+});
+
+/* ======== Auto-boot (se já autorizado) ======== */
+(async function autoBoot(){
+  try{
+    if (navigator.bluetooth.getDevices) {
+      const devs = await navigator.bluetooth.getDevices();
+      const amz = devs.find(d => (d.name||'').startsWith('Amazfit'));
+      if (amz) readAmazfit().catch(()=>{});
+    }
+  }catch(e){ /* silencioso */ }
+})();
+</script>
+</body>
+</html>
